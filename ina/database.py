@@ -4,6 +4,7 @@ import datetime
 import logging
 import re
 import os
+import json
 from functools import total_ordering
 from ina.tools import slugify
 
@@ -122,29 +123,20 @@ class EntryCredits:
 class EntryMedia:
     """Entry media information"""
 
-    HEADER = ["video_ids"]
+    HEADER = ["media"]
 
     def __init__(self):
         self.video_ids = list()
 
     def serial(self, delimiter="\t"):
         """Serialize the object"""
-        return delimiter.join(map(str, [",".join(self.video_ids)]))
+        return json.dumps(self.video_ids).replace(delimiter, "")
 
     def from_serial(self, split):
         """Recreates the object from its serialization"""
-        self.video_ids = split[0].split(",")
-        self.remove_duplicate_ids()
-
-    def remove_duplicate_ids(self):
-        """Remove duplicates of video ids"""
-        seen = set()
-        new_ids = list()
-        for video_id in self.video_ids:
-            if video_id not in seen:
-                seen.add(video_id)
-                new_ids.append(video_id)
-        self.video_ids = new_ids
+        if len("".join(split)) == 0:
+            return
+        self.video_ids = json.loads(split[0])
 
 class EntryAttributes:
     """Entry attributes"""
@@ -174,6 +166,7 @@ class EntryAttributes:
         self.duration = 0
         for base, factor in zip([3600, 60, 1], duration_str.split(":")):
             self.duration += base * int(factor)
+
 
 @total_ordering
 class InaEntry:

@@ -12,7 +12,28 @@ from ina.database import load_database
 def download_video_id(options, entry, video_id):
     """Download a YouTube video, and check if it is the correct one"""
     filename = entry.filename()
-    url = "http://www.youtube.com/watch?v=" + video_id
+    url = "http://www.youtube.com/watch?v=" + video_id["video_id"]
+    if video_id["title_error"] > .5:
+        logging.warning(
+            "Media for %s has a weird title: '%s'",
+            filename + ".mp3",
+            video_id["title"],
+        )
+        if not (options["skip_confirmation"]
+                or input("Is the media [%s] correct? (y/n) " % url).lower() == "y"):
+            return False
+    if video_id["duration_error"] > .05:
+        logging.warning(
+            "%s has a duration of %ds (%s) but we expected %ds (%s)",
+            filename + ".mp3",
+            video_id["duration"],
+            time.strftime('%H:%M:%S', time.gmtime(video_id["duration"])),
+            entry.attributes.duration,
+            time.strftime('%H:%M:%S', time.gmtime(entry.attributes.duration)),
+        )
+        if not (options["skip_confirmation"]
+                or input("Is the media [%s] correct? (y/n) " % url).lower() == "y"):
+            return False
     command = [
         "youtube-dl",
         "--extract-audio",
@@ -23,23 +44,6 @@ def download_video_id(options, entry, video_id):
     with open(os.devnull, 'w') as devnull:
         process = subprocess.Popen(command, stdout=devnull)
     process.wait()
-    duration = eyed3.load(filename + ".mp3").info.time_secs
-    error = abs(duration - entry.attributes.duration) / \
-        entry.attributes.duration
-    if error > .05:
-        logging.warning(
-            "%s has a duration of %ds (%s) but we expected %ds (%s)",
-            filename + ".mp3",
-            duration,
-            time.strftime('%H:%M:%S', time.gmtime(duration)),
-            entry.attributes.duration,
-            time.strftime('%H:%M:%S', time.gmtime(
-                entry.attributes.duration)),
-        )
-        if options["skip_confirmation"]\
-                or input("Is the file correct? (y/n) ").lower() == "y":
-            return True
-        return False
     return True
 
 
@@ -75,13 +79,18 @@ def download(options):
             if os.path.isfile(filename + ".mp3"):
                 skipped += 1
                 continue
+            entry.media.video_ids.sort(
+                key=lambda d: (d["title_error"], d["duration_error"]))
             last_video_id = ""
             for video_id in entry.media.video_ids:
-                last_video_id = video_id
+                last_video_id = video_id["video_id"]
                 success = download_video_id(options, entry, video_id)
                 if success:
                     break
-            set_tags(entry, last_video_id)
+            if os.path.isfile(filename + ".mp3"):
+                set_tags(entry, last_video_id)
+            else:
+                logging.error("Could not download %s", filename + ".mp3")
             downloaded += 1
         logging.info(
             "Dowloaded %d entries and skipped %d",

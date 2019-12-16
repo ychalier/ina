@@ -1,0 +1,9 @@
+beautifulsoup4==4.8.1
+bs4==0.0.1
+eyeD3==0.8.11
+python-magic==0.4.15
+selenium==3.141.0
+six==1.13.0
+soupsieve==1.9.5
+tqdm==4.40.2
+urllib3==1.25.7

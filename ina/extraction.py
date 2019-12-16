@@ -8,8 +8,7 @@ information.
 import logging
 import time
 import os
-import urllib
-import re
+import urllib.request
 import tqdm
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -22,6 +21,7 @@ from ina.database import EntryParsingException
 from ina.database import load_database, save_database
 from ina.tools import slugify
 from ina.tools import timed_loop
+from ina.tools import jaccard
 
 
 def scrap_result_page(html):
@@ -72,6 +72,54 @@ def scrap(options):
     logging.info("Database contains %d entries (%d have been ignored)", added, ignored)
 
 
+def enrich_credits(entry):
+    """Enrich credits"""
+    if entry.credits.link is not None:
+        html = urllib.request.urlopen(entry.credits.link).read().decode()
+        soup = BeautifulSoup(html, "html.parser")
+        element = soup.find("td", {"id": "GEN"})
+        if element is not None:
+            text = element.get_text().strip().replace("\t", "")
+            entry.credits.text = text
+            entry.credits.extract_text()
+
+def enrich_media(entry):
+    """Enrich media"""
+    query_string = urllib.parse.urlencode(
+        {"search_query" : "%s %s" % (entry.title, entry.category.collection)}
+    )
+    html = urllib.request.urlopen(
+        "http://www.youtube.com/results?" + query_string
+    ).read().decode()
+    soup = BeautifulSoup(html, "html.parser")
+    search_results = list()
+    for div in soup.find_all("div", {"class": "yt-lockup-video"}):
+        duration_txt = div.find("span", {"class": "video-time"})\
+                            .get_text().strip()
+        if len(duration_txt) == 5:
+            duration_txt = "0:" + duration_txt
+        duration = 0
+        for base, factor in zip([3600, 60, 1], duration_txt.split(":")):
+            duration += base * int(factor)
+        search_result = {
+            "duration": duration,
+            "title":
+                div.find("h3", {"class": "yt-lockup-title"})\
+                    .find("a").get_text().strip(),
+            "video_id":
+                div.find("h3", {"class": "yt-lockup-title"})\
+                    .find("a")["href"][-11:],
+        }
+        search_result["duration_error"] =\
+            abs(search_result["duration"]\
+             - entry.attributes.duration)\
+              / entry.attributes.duration
+        search_result["title_error"] =\
+            1 - jaccard(entry.title, search_result["title"])
+        search_results.append(search_result)
+    entry.media.video_ids = search_results[:]
+
+
 def enrich(options):
     """Enrich options"""
     database = load_database(options)
@@ -81,26 +129,8 @@ def enrich(options):
     for slug in collection_filters:
         logging.info("Enriching collection %s", slug)
         for entry in timed_loop(tqdm.tqdm(database[slug]), delay=options["delay"]):
-            if entry.credits.link is not None:
-                html = urllib.request.urlopen(entry.credits.link).read().decode()
-                soup = BeautifulSoup(html, "html.parser")
-                element = soup.find("td", {"id": "GEN"})
-                if element is not None:
-                    text = element.get_text().strip().replace("\t", "")
-                    entry.credits.text = text
-                    entry.credits.extract_text()
-                query_string = urllib.parse.urlencode(
-                    {"search_query" : "%s %s" % (entry.title, entry.category.collection)}
-                )
-                html_content = urllib.request.urlopen(
-                    "http://www.youtube.com/results?" + query_string
-                )
-                search_results = re.findall(
-                    r"href=\"\/watch\?v=(.{11})",
-                    html_content.read().decode()
-                )
-                entry.media.video_ids = search_results[:]
-                entry.media.remove_duplicate_ids()
+            enrich_credits(entry)
+            enrich_media(entry)
     save_database(options, database)
 
 class Scraper:

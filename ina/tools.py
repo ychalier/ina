@@ -1,3 +1,5 @@
+"""Tools for INA"""
+
 import re
 import time
 import unicodedata
@@ -25,6 +27,7 @@ def slugify(string):
         NON_URL_SAFE_REGEX.sub("", string.lower()).strip()
     )))
 
+
 def timed_loop(iterator, delay):
     """Iterator wrapper that makes sure each loop is spaced in time"""
     for i in iterator:
@@ -33,3 +36,18 @@ def timed_loop(iterator, delay):
         time_since_last_loop = time.time() - last_loop
         time_to_wait = max(0, delay - time_since_last_loop)
         time.sleep(time_to_wait)
+
+
+STOPWORDS = set(["le", "la", "les", "l", "un", "une", "des"])
+
+
+def tokenize(string):
+    """Tokenize a string"""
+    return set(slugify(string).split("-")).difference(STOPWORDS)
+
+
+def jaccard(string_a, string_b):
+    """Compute Jaccard distance between to strings"""
+    tokens_a = tokenize(string_a)
+    tokens_b = tokenize(string_b)
+    return len(tokens_a.intersection(tokens_b)) / len(tokens_a.union(tokens_b))
