@@ -56,7 +56,7 @@ def scrap(options):
             return
     database = open(options["database"], "w")
     database.write(InaEntry.HEADER + "\n")
-    scraper = Scraper("/usr/local/bin/geckodriver", delay=options["delay"])
+    scraper = Scraper(options["driver_executable_path"], delay=options["delay"])
     scraper.initialize_driver()
     scraper.search(options["query"])
     added, ignored = 0, 0

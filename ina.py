@@ -1,4 +1,4 @@
-""" INA downloader
+""" INA Ripper
 
 Usage:
     python ina.py (scrap|clean|enrich|download) [options]
@@ -9,6 +9,9 @@ Options:
     -db     database file
     -y      skip confirmation
     -d      delay
+    -e      driver executable path
+
+Checkout repository at https://github.com/ychalier/ina.
 """
 
 
@@ -41,6 +44,7 @@ def parse_arguments(args):
         "database": "database.tsv",
         "skip_confirmation": False,
         "delay": 1.5,
+        "driver_executable_path": "/usr/local/bin/geckodriver",
     }
     action = args[0]
     i = 1
@@ -57,6 +61,9 @@ def parse_arguments(args):
         elif args[i] == "-y":
             options["skip_confirmation"] = True
             i += 1
+        elif args[i] == "-e":
+            options["driver_executable_path"] = args[i + 1]
+            i += 2
         else:
             logging.warning("Ignoring argument '%s'", args[i])
             i += 1
