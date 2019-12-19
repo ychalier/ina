@@ -1,85 +1,44 @@
-""" INA Ripper
-
-Usage:
-    python ina.py (scrap|clean|enrich|download) [options]
-
-Options:
-    -q      query
-    -cs     collection slugs filter
-    -db     database file
-    -y      skip confirmation
-    -d      delay
-    -e      driver executable path
-
-Checkout repository at https://github.com/ychalier/ina.
-"""
+""" INA Ripper (repository at https://github.com/ychalier/ina)"""
 
 
 import logging
-import sys
 from ina.extraction import scrap, enrich
 from ina.database import clean
 from ina.download import download
+from ina.database import select_media
+from ina.factory import UnaryOption, BinaryOption, Factory
 
 
-def act(options, action):
-    """Take actions"""
-    if action == "scrap":
-        scrap(options)
-    elif action == "clean":
-        clean(options)
-    elif action == "enrich":
-        enrich(options)
-    elif action == "download":
-        download(options)
+class InaRipper(Factory):
+    """Factory extension for the INA Ripper"""
 
-
-def parse_arguments(args):
-    """Parse input arguments and take corresponding actions"""
-    if len(args) == 0:
-        raise ValueError("Incorrect number of parameters")
-    options = {
-        "query": "Test",
-        "collection_slugs": set(),
-        "database": "database.tsv",
-        "skip_confirmation": False,
-        "delay": 1.5,
-        "driver_executable_path": "/usr/local/bin/geckodriver",
-    }
-    action = args[0]
-    i = 1
-    while i < len(args):
-        if args[i] == "-q":
-            options["query"] = args[i + 1]
-            i += 2
-        elif args[i] == "-cs":
-            options["collection_slugs"] = set(args[i + 1].split(" "))
-            i += 2
-        elif args[i] == "-db":
-            options["database"] = args[i + 1]
-            i += 2
-        elif args[i] == "-y":
-            options["skip_confirmation"] = True
-            i += 1
-        elif args[i] == "-e":
-            options["driver_executable_path"] = args[i + 1]
-            i += 2
-        else:
-            logging.warning("Ignoring argument '%s'", args[i])
-            i += 1
-    for key, value in options.items():
-        logging.info("Option '%s' is set to '%s'", key, value)
-    if action not in ["scrap", "clean", "enrich", "download"]:
-        raise ValueError("Incorrect action")
-    return options, action
+    def __init__(self):
+        Factory.__init__(self, [
+            BinaryOption("q", "query", ""),
+            BinaryOption("c", "filter-collections", set(),
+                         lambda x: set(x.split(" "))),
+            BinaryOption("d", "database", "database.tsv"),
+            UnaryOption("y", "skip-confirmation", False),
+            BinaryOption("w", "delay", 1.5, float),
+            BinaryOption("e", "driver-executable-path",
+                         "/usr/local/bin/geckodriver"),
+            UnaryOption("a", "append", False),
+            BinaryOption("p", "max-page-requests", 300, int),
+            BinaryOption("m", "max-media-candidates", 2, int),
+            BinaryOption("t", "title-error-threshold", .5, float),
+            BinaryOption("u", "duration-error-threshold", .05, float),
+        ], {
+            "scrap": scrap,
+            "clean": clean,
+            "enrich": enrich,
+            "download": download,
+            "select_media": select_media
+        })
 
 
 if __name__ == "__main__":
-    LOG_FORMAT = "%(asctime)s\t%(levelname)s\t%(message)s"
-    logging.basicConfig(format=LOG_FORMAT, level=logging.INFO)
-    try:
-        PARSED_ARGS = parse_arguments(sys.argv[1:])
-    except ValueError as err:
-        print(__doc__)
-        sys.exit()
-    act(*PARSED_ARGS)
+    logging.basicConfig(
+        format="%(asctime)s\t%(levelname)s\t%(message)s",
+        level=logging.INFO
+    )
+    InaRipper().start()

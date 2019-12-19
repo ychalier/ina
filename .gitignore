@@ -133,3 +133,6 @@ settings.txt
 draft/
 .pylintrc
 *.tsv
+*.part
+*.mp3
+*.webm

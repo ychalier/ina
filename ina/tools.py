@@ -2,6 +2,7 @@
 
 import re
 import time
+import logging
 import unicodedata
 
 
@@ -51,3 +52,29 @@ def jaccard(string_a, string_b):
     tokens_a = tokenize(string_a)
     tokens_b = tokenize(string_b)
     return len(tokens_a.intersection(tokens_b)) / len(tokens_a.union(tokens_b))
+
+
+def tracked_loop(iterator, total, titler):
+    """Loops over an iterator and displays progress"""
+    time_start = time.time()
+    for i, value in enumerate(iterator):
+        elapsed = time.time() - time_start
+        if i == 0:
+            eta = "--:--:--"
+        else:
+            eta = time.strftime(
+                '%H:%M:%S',
+                time.gmtime((total - i) * (elapsed / i))
+            )
+        logging.info(
+            "[%s/%d | Elapsed: %s | ETA: %s] %s",
+            "{number:0{width}d}".format(
+                width=len(str(total)),
+                number=i + 1
+            ),
+            total,
+            time.strftime('%H:%M:%S', time.gmtime(elapsed)),
+            eta,
+            titler(value)
+        )
+        yield value

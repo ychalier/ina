@@ -1,7 +1,12 @@
-"""Database module"""
+""" Database module
+
+Provides tools to represent INA database entries, along with common databases
+operations.
+"""
 
 import datetime
 import logging
+import time
 import re
 import os
 import json
@@ -16,7 +21,12 @@ class EntryParsingException(Exception):
 class EntryDiffusion:
     """Diffusion information"""
 
-    HEADER = ["diffusion_date", "diffusion_time", "diffusion_datetime", "diffusion_channel"]
+    HEADER = [
+        "diffusion_date",
+        "diffusion_time",
+        "diffusion_datetime",
+        "diffusion_channel"
+    ]
 
     def __init__(self):
         self.date = None
@@ -26,7 +36,12 @@ class EntryDiffusion:
 
     def serial(self, delimiter="\t"):
         """Serialize the object"""
-        return delimiter.join(map(str, [self.date, self.time, self.datetime, self.channel]))
+        return delimiter.join(map(str, [
+            self.date,
+            self.time,
+            self.datetime,
+            self.channel
+        ]))
 
     def from_serial(self, split):
         """Recreates the object from its serialization"""
@@ -56,7 +71,14 @@ class EntryDiffusion:
 class EntryCategory:
     """Categorisation information"""
 
-    HEADER = ["collection", "collection_title", "track_number", "track_total", "program", "genre"]
+    HEADER = [
+        "collection",
+        "collection_title",
+        "track_number",
+        "track_total",
+        "program",
+        "genre"
+    ]
 
     def __init__(self):
         self.collection = None
@@ -102,7 +124,12 @@ class EntryCredits:
 
     def serial(self, delimiter="\t"):
         """Serialize the object"""
-        return delimiter.join(map(str, [self.link, self.text, self.author, self.director]))
+        return delimiter.join(map(str, [
+            self.link,
+            self.text,
+            self.author,
+            self.director
+        ]))
 
     def from_serial(self, split):
         """Recreates the object from its serialization"""
@@ -137,6 +164,7 @@ class EntryMedia:
         if len("".join(split)) == 0:
             return
         self.video_ids = json.loads(split[0])
+
 
 class EntryAttributes:
     """Entry attributes"""
@@ -173,11 +201,11 @@ class InaEntry:
     """Main entry representation object"""
 
     HEADER = "\t".join(
-        ["title"]\
-        + EntryCategory.HEADER\
-        + EntryDiffusion.HEADER\
-        + EntryCredits.HEADER\
-        + EntryMedia.HEADER\
+        ["title"]
+        + EntryCategory.HEADER
+        + EntryDiffusion.HEADER
+        + EntryCredits.HEADER
+        + EntryMedia.HEADER
         + EntryAttributes.HEADER
     )
 
@@ -189,6 +217,12 @@ class InaEntry:
         self.media = EntryMedia()
         self.attributes = EntryAttributes()
 
+    def __str__(self):
+        return "<InaEntry; title: \"%s\"; collection: \"%s\">" % (
+            self.title,
+            self.category.collection_title
+        )
+
     def __hash__(self):
         return hash(slugify(self.title))
 
@@ -197,6 +231,10 @@ class InaEntry:
             and self.category.collection_title == other.category.collection_title
 
     def __lt__(self, other):
+        if self.diffusion.datetime == "":
+            return False
+        if other.diffusion.datetime == "":
+            return True
         return self.diffusion.datetime < other.diffusion.datetime
 
     def serial(self, delimiter="\t"):
@@ -248,8 +286,52 @@ class InaEntry:
             self.title
         ))
 
+
+def load_database(options):
+    """Load an entry database"""
+    logging.info("Loading database at %s",
+                 os.path.abspath(options["database"]))
+    n_entries = 0
+    database = dict()
+    with open(options["database"], "r") as file:
+        for entry_serial in file.readlines()[1:]:
+            entry = InaEntry()
+            entry.from_serial(entry_serial.strip())
+            n_entries += 1
+            slug = slugify(entry.category.collection)
+            database.setdefault(slug, list())
+            database[slug].append(entry)
+    logging.info(
+        "Loaded %d entries in the database, organized in %d collections",
+        n_entries,
+        len(database)
+    )
+    return database
+
+
+def save_database(options, database):
+    """Save an entry database"""
+    logging.info("Saving database at %s", os.path.abspath(options["database"]))
+    if not options["skip-confirmation"] and os.path.isfile(options["database"]):
+        validation = input(
+            "This action will reset the database at %s, continue? (y/n) "
+            % os.path.abspath(options["database"])
+        )
+        if validation.lower() != "y":
+            return
+    i = 1
+    with open(options["database"], "w") as file:
+        file.write(InaEntry.HEADER + "\n")
+        for slug in database:
+            for entry in database[slug]:
+                i += 1
+                file.write(entry.serial() + "\n")
+    logging.info("Wrote %d lines to %s", i,
+                 os.path.abspath(options["database"]))
+
+
 def clean(options):
-    """Clean action"""
+    """Remove duplicates and select collection title"""
     database = load_database(options)
     collection_titles = dict()
     for slug in database:
@@ -273,7 +355,7 @@ def clean(options):
             entry.category.track_number = i + 1
             entry.category.track_total = new_size
         logging.info(
-            "Collection '%s' has been cleaned, going from %d to %d entries (-%d)",
+            "Collection '%s' cleaned, going from %d to %d entries (-%d)",
             slug,
             original_size,
             new_size,
@@ -281,41 +363,85 @@ def clean(options):
         )
     save_database(options, database)
 
-def load_database(options):
-    """Load an entry database"""
-    logging.info("Loading database at %s", os.path.abspath(options["database"]))
-    n_entries = 0
-    database = dict()
-    with open(options["database"], "r") as file:
-        for entry_serial in file.readlines()[1:]:
-            entry = InaEntry()
-            entry.from_serial(entry_serial.strip())
-            n_entries += 1
-            slug = slugify(entry.category.collection)
-            database.setdefault(slug, list())
-            database[slug].append(entry)
-    logging.info(
-        "Loaded %d entries in the database, organized in %d collections",
-        n_entries,
-        len(database)
-    )
-    return database
 
-def save_database(options, database):
-    """Save an entry database"""
-    logging.info("Saving database at %s", os.path.abspath(options["database"]))
-    if not options["skip_confirmation"] and os.path.isfile(options["database"]):
-        validation = input(
-            "This action will reset the database at %s, continue? (y/n) "
-            % os.path.abspath(options["database"])
-        )
-        if validation.lower() != "y":
-            return
-    i = 1
-    with open(options["database"], "w") as file:
-        file.write(InaEntry.HEADER + "\n")
-        for slug in database:
-            for entry in database[slug]:
-                i += 1
-                file.write(entry.serial() + "\n")
-    logging.info("Wrote %d lines to %s", i, os.path.abspath(options["database"]))
+def select_entry_media(options, entry, allocated):
+    """Select the best media source for one entry"""
+    entry.media.video_ids.sort(
+        key=lambda d: (d["title_error"], d["duration_error"])
+    )
+    for video_id in entry.media.video_ids[:options["max-media-candidates"]]:
+        if video_id["video_id"] in allocated:
+            continue
+        url = "http://www.youtube.com/watch?v=" + video_id["video_id"]
+        if video_id["title_error"] < options["title-error-threshold"]\
+                and video_id["duration_error"] < options["duration-error-threshold"]:
+            return video_id
+        table = [
+            ["Source", "Title", "Collection", "Duration"], [
+                "INA",
+                entry.title,
+                entry.category.collection_title,
+                time.strftime('%H:%M:%S', time.gmtime(
+                    entry.attributes.duration))
+            ], [
+                "YouTube",
+                video_id["title"],
+                "-",
+                time.strftime('%H:%M:%S', time.gmtime(video_id["duration"]))
+            ]
+        ]
+        widths = [min(40, max(map(len, column))) for column in table]
+        text = "\n"
+        for row in range(4):
+            for col in range(3):
+                padding = max(1, widths[col] - len(table[col][row]) + 3)
+                text = text + table[col][row] + " " * padding
+            text += "\n"
+        text += "Is the media [%s] correct? (y/n) " % url
+        if input(text).lower() == "y":
+            return video_id
+    return None
+
+
+def select_media(options):
+    """Select the best media source with user interaction"""
+    database = load_database(options)
+    collection_filters = set(database)
+    if len(options["filter-collections"]) > 0:
+        collection_filters = options["filter-collections"]
+    allocated = set()
+    for slug in collection_filters:
+        logging.info("Selection media for collection %s", slug)
+        for i, entry in enumerate(database[slug]):
+            filename = entry.filename()
+            logging.info(
+                "[%s/%d] Checking %s",
+                "{number:0{width}d}".format(
+                    width=len(str(len(database[slug]))),
+                    number=i + 1
+                ),
+                len(database[slug]),
+                filename + ".mp3"
+            )
+            selected_id = select_entry_media(options, entry, allocated)
+            if selected_id is None:
+                while True:
+                    manual_input = input("Please provide the correct video id: ")
+                    manual_input = manual_input.strip()
+                    if len(manual_input) == 0:
+                        entry.media.video_ids = list()
+                        break
+                    if len(manual_input) == 11:
+                        entry.media.video_ids = [{
+                            "video_id": manual_input,
+                            "title": "MANUAL_INPUT",
+                            "duration": 0,
+                            "title_error": 0,
+                            "duration_error": 0
+                        }]
+                        break
+                    print("Please enter a correct video id (or leave it empty).")
+            else:
+                entry.media.video_ids = [selected_id]
+                allocated.add(selected_id["video_id"])
+    save_database(options, database)
